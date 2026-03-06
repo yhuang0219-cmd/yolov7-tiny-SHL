@@ -1,0 +1,57 @@
+# parameters
+nc: 4 # number of classes
+depth_multiple: 1.0  # model depth multiple
+width_multiple: 1.0  # layer channel multiple
+
+# anchors
+anchors:
+  - [10,13, 16,30, 33,23]  # P3/8
+  - [30,61, 62,45, 59,119]  # P4/16
+  - [116,90, 156,198, 373,326]  # P5/32
+
+# yolov7-tiny backbone
+backbone:
+  # [from, number, module, args] c2, k=1, s=1, p=None, g=1, act=True
+  # [from, number, module, args]
+  # input [b, 1, 640, 640]
+  [ [ -1, 1, PatchEmbed, [ 96, 4 ] ],  # 0 [b, 96, 160, 160]
+    [ -1, 1, SwinStage , [ 96, 2, 3, 7 ] ],  # 1 [b, 96, 160, 160]
+    [ -1, 1, PatchMerging, [ 192 ] ],    # 2 [b, 192, 80, 80]
+    [ -1, 1, SwinStage,  [ 192, 2, 6, 7 ] ],  # 3 --F0-- [b, 192, 80, 80] (p3)
+    [ -1, 1, PatchMerging, [ 384 ] ],   # 4 [b, 384, 40, 40]
+    [ -1, 1, SwinStage, [ 384, 6, 12, 7 ] ], # 5 --F1-- [b, 384, 40, 40] (p4)
+    [ -1, 1, PatchMerging, [ 768 ] ],   # 6 [b, 768, 20, 20]
+    [ -1, 1, SwinStage, [ 768, 2, 24, 7 ] ], # 7 --F2-- [b, 768, 20, 20]
+  ]
+
+
+# yolov7-tiny head
+head:
+  [[-1, 1, SPPCSPCSIM, [256, nn.LeakyReLU(0.1)]], # 9-Yolov7-tiny-spp (8)
+
+   [-1, 1, Conv, [128, 1, 1, None, 1, nn.LeakyReLU(0.1)]],
+   [-1, 1, nn.Upsample, [None, 2, 'nearest']],
+   [5, 1, Conv, [128, 1, 1, None, 1, nn.LeakyReLU(0.1)]], # route backbone P4 (11)
+   [[-1, -2], 1, Concat, [1]],
+   [-1, 1, yolov7_tiny_E_ELAN, [128, 64, nn.LeakyReLU(0.1)]], # 14 (13)
+
+   [-1, 1, Conv, [64, 1, 1, None, 1, nn.LeakyReLU(0.1)]],
+   [-1, 1, nn.Upsample, [None, 2, 'nearest']],
+   [3, 1, Conv, [64, 1, 1, None, 1, nn.LeakyReLU(0.1)]], # route backbone P3 (16)
+   [[-1, -2], 1, Concat, [1]],
+   [-1, 1, yolov7_tiny_E_ELAN,[64, 32,nn.LeakyReLU(0.1)]], # 19 (18)
+
+   [-1, 1, Conv, [128, 3, 2, None, 1, nn.LeakyReLU(0.1)]],
+   [[-1, 13], 1, Concat, [1]],
+   [-1, 1, yolov7_tiny_E_ELAN, [128, 64,  nn.LeakyReLU(0.1)]], # 22 (21)
+
+   [-1, 1, Conv, [256, 3, 2, None, 1, nn.LeakyReLU(0.1)]],
+   [[-1, 8], 1, Concat, [1]],
+   [-1, 1, yolov7_tiny_E_ELAN, [256, 128, nn.LeakyReLU(0.1)]], # 25 (24)
+
+   [18, 1, Conv, [128, 3, 1, None, 1, nn.LeakyReLU(0.1)]], # 26-P3 (25)
+   [21, 1, Conv, [256, 3, 1, None, 1, nn.LeakyReLU(0.1)]], # 27-P4 (26)
+   [24, 1, Conv, [512, 3, 1, None, 1, nn.LeakyReLU(0.1)]], # 28-P5 (27)
+
+   [[25, 26, 27], 1, IDetect, [nc, anchors]],   # Detect(P3, P4, P5)
+  ]

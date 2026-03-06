@@ -1,0 +1,64 @@
+# parameters
+nc: 4 # number of classes
+depth_multiple: 1.0  # model depth multiple
+width_multiple: 1.0  # layer channel multiple
+
+# anchors
+anchors:
+  - [10,13, 16,30, 33,23]  # P3/8
+  - [30,61, 62,45, 59,119]  # P4/16
+  - [116,90, 156,198, 373,326]  # P5/32
+
+# yolov7-tiny backbone
+backbone:
+  # [from, number, module, args] c2, k=1, s=1, p=None, g=1, act=True
+  [ [ -1, 1, stem, [ 16, 3, 2 ] ], #0 p1/2
+
+    [ -1, 1, FusedMBConv, [ 16, 3, 1, 1, 0 ] ], # 1- last is use SE
+
+    [ -1, 1, FusedMBConv, [ 24, 3, 2, 4, 0 ] ], # 2-p2/4
+    [ -1, 1, FusedMBConv, [ 24, 3, 1, 4, 0 ] ], # 3
+
+    [ -1, 1, FusedMBConv, [ 32, 3, 2, 4, 0 ] ], # 4-p3/8
+    [ -1, 1, FusedMBConv, [ 32, 3, 1, 4, 0 ] ], # 5
+
+    [ -1, 1, MBConv, [ 64, 3, 2, 4, 0.25 ] ], # 6-p4/16  last is use SE and ratio
+    [ -1, 2, MBConv, [ 64, 3, 1, 4, 0.25 ] ], # 7 (p3)
+
+    [ -1, 1, MBConv, [ 80, 3, 2, 6, 0.25 ] ], # 8
+    [ -1, 3, MBConv, [ 80, 3, 1, 6, 0.25 ] ], # 9 (p4)
+
+    [ -1, 1, MBConv, [ 136, 3, 2, 4, 0.25 ] ], # 10-p5/64
+    [ -1, 5, MBConv, [ 136, 3, 1, 4, 0.25 ] ], # 11
+  ]
+
+# yolov7-tiny head
+head:
+  [[-1, 1, SPPCSPCSIM, [256, nn.LeakyReLU(0.1)]], # 9-Yolov7-tiny-spp (12)
+
+   [-1, 1, Conv, [128, 1, 1, None, 1, nn.LeakyReLU(0.1)]],
+   [-1, 1, nn.Upsample, [None, 2, 'nearest']],
+   [9, 1, Conv, [128, 1, 1, None, 1, nn.LeakyReLU(0.1)]], # route backbone P4 (15)
+   [[-1, -2], 1, Concat, [1]],
+   [-1, 1, yolov7_tiny_E_ELAN, [128, 64, nn.LeakyReLU(0.1)]], # 14 (17)
+
+   [-1, 1, Conv, [64, 1, 1, None, 1, nn.LeakyReLU(0.1)]],
+   [-1, 1, nn.Upsample, [None, 2, 'nearest']],
+   [7, 1, Conv, [64, 1, 1, None, 1, nn.LeakyReLU(0.1)]], # route backbone P3 (20)
+   [[-1, -2], 1, Concat, [1]],
+   [-1, 1, yolov7_tiny_E_ELAN,[64, 32,nn.LeakyReLU(0.1)]], # 19 (22)
+
+   [-1, 1, Conv, [128, 3, 2, None, 1, nn.LeakyReLU(0.1)]],
+   [[-1, 17], 1, Concat, [1]],
+   [-1, 1, yolov7_tiny_E_ELAN, [128, 64,  nn.LeakyReLU(0.1)]], # 22 (25)
+
+   [-1, 1, Conv, [256, 3, 2, None, 1, nn.LeakyReLU(0.1)]],
+   [[-1, 12], 1, Concat, [1]],
+   [-1, 1, yolov7_tiny_E_ELAN, [256, 128, nn.LeakyReLU(0.1)]], # 25 (28)
+
+   [22, 1, Conv, [128, 3, 1, None, 1, nn.LeakyReLU(0.1)]], # 26-P3 (29)
+   [25, 1, Conv, [256, 3, 1, None, 1, nn.LeakyReLU(0.1)]], # 27-P4 (30)
+   [28, 1, Conv, [512, 3, 1, None, 1, nn.LeakyReLU(0.1)]], # 28-P5 (31)
+
+   [[29, 30, 31], 1, IDetect, [nc, anchors]],   # Detect(P3, P4, P5)
+  ]
